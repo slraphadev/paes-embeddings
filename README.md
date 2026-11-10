@@ -17,24 +17,43 @@ O projeto nasceu do **FAQ PAES**, um assistente RAG no WhatsApp que desenvolvi e
 - **Divisão:** treino e teste separados **por trecho**, estratificados por fonte, para nenhum trecho do teste aparecer no treino.
 - **Revisão:** 60 perguntas do teste revisadas manualmente (justificativas das reprovações redigidas com apoio de LLM e conferidas). **46 de 60 (77%) foram consideradas válidas.** As inválidas se concentram no conteúdo programático, que só lista temas: o LLM gerou perguntas pedindo explicações ou comparações que o documento não traz.
 
-Dataset: [huggingface.co/datasets/SEU_USUARIO/paes-retrieval-ptbr](https://huggingface.co/datasets/SEU_USUARIO/paes-retrieval-ptbr)
+Dataset: [huggingface.co/datasets/slraphadev/paes-retrieval-ptbr](https://huggingface.co/datasets/slraphadev/paes-retrieval-ptbr)
 
 ## Resultados
 
-Teste com [N] perguntas sobre um corpus de [N] trechos.
+Teste com 183 perguntas (92 trechos que não aparecem no treino) sobre um corpus de 738 trechos.
 
 | Modelo | Parâmetros | Recall@1 | Recall@5 | Recall@10 | MRR@10 |
 |---|---|---|---|---|---|
-| BM25 | n/a | | | | |
-| paraphrase-multilingual-MiniLM-L12-v2 | 118M | | | | |
-| multilingual-e5-small | 118M | | | | |
-| multilingual-e5-base | 278M | | | | |
-| BAAI/bge-m3 | 568M | | | | |
-| **e5-small-paes (fine-tuning)** | 118M | | | | |
+| BM25 | n/a | 0,497 | 0,798 | 0,852 | 0,625 |
+| paraphrase-multilingual-MiniLM-L12-v2 | 118M | 0,339 | 0,514 | 0,617 | 0,416 |
+| multilingual-e5-small | 118M | 0,448 | 0,678 | 0,765 | 0,544 |
+| multilingual-e5-base | 278M | 0,464 | 0,694 | 0,803 | 0,569 |
+| BAAI/bge-m3 (usado em produção) | 568M | 0,486 | 0,781 | 0,891 | 0,613 |
+| **e5-small-paes (fine-tuning)** | 118M | **0,568** | **0,820** | **0,918** | **0,675** |
 
-Modelo ajustado: [huggingface.co/SEU_USUARIO/e5-small-paes](https://huggingface.co/SEU_USUARIO/e5-small-paes)
+Modelo ajustado: [huggingface.co/slraphadev/e5-small-paes](https://huggingface.co/slraphadev/e5-small-paes)
 
-[Análise: o que os números mostram, por fonte (edital, obras, conteúdo), e o que isso significa para o FAQ PAES em produção.]
+Por fonte (MRR@10):
+
+| Modelo | Edital (96) | Conteúdo (79) | Obras (8) |
+|---|---|---|---|
+| BM25 | 0,621 | 0,609 | 0,823 |
+| BAAI/bge-m3 | 0,643 | 0,554 | 0,828 |
+| e5-small original | 0,577 | 0,472 | 0,875 |
+| **e5-small-paes** | **0,706** | **0,619** | 0,854 |
+
+### O que os números mostram
+
+1. **A escolha de produção se confirma entre os modelos prontos.** O bge-m3 é o melhor modelo denso sem ajuste, à frente do e5-base, do e5-small e do MiniLM em todas as métricas.
+2. **O fine-tuning funcionou.** O e5-small ajustado ganhou 12 pontos de Recall@1 (0,448 → 0,568) e 13 de MRR (0,544 → 0,675) sobre a própria versão original, e **superou o bge-m3 em todas as métricas com cerca de 1/5 dos parâmetros**. O maior ganho foi no edital, onde o vocabulário administrativo (SRV, deferimento, Quadro 1) é mais específico.
+3. **O BM25 é um baseline forte.** Ele empata com o bge-m3 (MRR 0,625 contra 0,613) e ganha dele no Recall@1. Parte disso deve vir das perguntas sintéticas, que tendem a repetir palavras do trecho (ver Limitações). Mesmo assim, o resultado sugere que uma **busca híbrida (BM25 + densa)** pode melhorar o FAQ PAES.
+4. **O conteúdo programático é a parte mais difícil** para todos os modelos. Ele também concentra as perguntas inválidas da revisão.
+
+### Implicações para o FAQ PAES
+
+- Um modelo de 118M parâmetros ajustado roda em CPU num servidor modesto, o que eliminaria a dependência da API gratuita do Hugging Face sem perder qualidade.
+- Antes de trocar o modelo em produção, é preciso validar com **perguntas reais** dos candidatos (o histórico do chat), porque o ganho aqui foi medido em perguntas da mesma distribuição sintética usada no treino.
 
 ## Método
 
@@ -48,6 +67,8 @@ Modelo ajustado: [huggingface.co/SEU_USUARIO/e5-small-paes](https://huggingface.
 - As perguntas são sintéticas. Perguntas reais de candidatos tendem a ser mais curtas, ambíguas e com erros de digitação.
 - Cada pergunta tem um único trecho correto. Quando dois trechos respondem à mesma pergunta, a métrica subestima o modelo.
 - O LLM que gerou as perguntas viu o trecho, o que pode favorecer sobreposição de palavras e ajudar o BM25.
+- O teste é pequeno (183 perguntas; só 8 de obras, então os números de obras não são conclusivos). Diferenças de 1 a 3 pontos entre modelos estão dentro do ruído; a vantagem do modelo ajustado (8 pontos de Recall@1 sobre o bge-m3) é maior, mas ainda medida numa amostra pequena.
+- O modelo ajustado foi treinado com perguntas geradas pelo mesmo LLM e com o mesmo prompt das perguntas do teste. Parte do ganho pode ser adaptação a esse estilo de pergunta, e não só ao domínio.
 - Corpus pequeno e de um único domínio. Os resultados não se generalizam para outros editais sem nova medição.
 
 ## Como reproduzir
