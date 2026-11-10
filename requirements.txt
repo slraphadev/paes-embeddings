@@ -1,0 +1,6 @@
+sentence-transformers>=3.3
+datasets>=2.20
+accelerate>=0.30
+rank-bm25>=0.2.2
+openai>=1.40
+numpy
